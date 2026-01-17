@@ -1,0 +1,81 @@
+# 1.5B NeuTTS V2 Zero-Shot Voice Cloning Finetuning Config
+# ========================================================
+#
+# V2 Template: Reference audio conditioning for zero-shot voice cloning
+# No phonemization - direct text input
+#
+# Usage:
+#   Single GPU:  python3 finetune_1.5b_v2.py config_1.5b_v2.yaml
+#   Multi-GPU:   torchrun --nproc_per_node=8 finetune_1.5b_v2.py config_1.5b_v2.yaml
+#   DeepSpeed:   deepspeed --num_gpus=8 finetune_1.5b_v2.py config_1.5b_v2.yaml --deepspeed ds_zero2.json
+
+# =============================================================================
+# MODEL & TOKENIZER
+# =============================================================================
+model_path: "pretrained_1.5b_v2"           # Extended model with V2 tokens
+tokenizer_path: "pretrained_1.5b_v2"       # Extended tokenizer with V2 + paralinguistic tokens
+
+# =============================================================================
+# DATA
+# =============================================================================
+data_path: "training_encoded_v2.json"      # Pre-encoded data with codes + ref_codes
+max_seq_len: 8192                          # Max sequence length (ref + target)
+max_samples: null                          # null = use all samples, or set integer for debugging
+
+# =============================================================================
+# OUTPUT
+# =============================================================================
+save_root: "./outputs"                     # Base directory for checkpoints
+run_name: "neutts-1.5b-v2-zeroshot"       # Experiment name
+
+# =============================================================================
+# TRAINING HYPERPARAMETERS
+# =============================================================================
+# Learning rate recommendations:
+#   - Large dataset (>100K samples): 1e-5 to 2e-5
+#   - Medium dataset (10K-100K): 2e-5 to 4e-5
+#   - Small dataset (<10K): 4e-5 to 1e-4
+lr: 2e-5
+lr_scheduler_type: "cosine"
+warmup_ratio: 0.03
+weight_decay: 0.01
+max_grad_norm: 1.0
+
+# =============================================================================
+# BATCH SIZE & STEPS
+# =============================================================================
+# Effective batch size = per_device * gradient_accumulation * num_gpus
+# For 8x H100 with 80GB: per_device=2, grad_accum=4 -> effective=64
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 4
+
+# Steps calculation:
+#   total_steps = (num_samples / effective_batch_size) * num_epochs
+#   For 165K samples, effective_batch=64, 1 epoch = ~2578 steps
+num_epochs: 3                              # ~7734 total steps
+max_steps: -1                              # -1 = use num_epochs, or set specific step count
+
+# =============================================================================
+# CHECKPOINTING
+# =============================================================================
+save_steps: 500                            # Save every N steps
+save_total_limit: 5                        # Keep last N checkpoints
+resume_from_checkpoint: null               # Path to resume from, or null
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+logging_steps: 10
+report_to: "tensorboard"                   # "tensorboard", "wandb", or "none"
+
+# =============================================================================
+# PERFORMANCE
+# =============================================================================
+use_flash_attn: true                       # Use Flash Attention 2 (requires flash-attn package)
+torch_compile: false                       # PyTorch 2.0 compile (can speed up but slow startup)
+num_workers: 8                             # Dataloader workers
+
+# =============================================================================
+# MISC
+# =============================================================================
+seed: 42
