@@ -27,8 +27,11 @@ Usage:
     # First extend tokenizer (one-time):
     python3 extend_tokenizer_1.5b.py --model_path pretrained_1.5b --output_path pretrained_1.5b_v2
 
-    # Then encode data:
-    python3 encode_1.5b_v2_8gpu.py input.json output.json --tokenizer_path pretrained_1.5b_v2 --num_gpus 8
+    # Then encode data with path remapping:
+    python3 encode_1.5b_v2_8gpu.py training_el_v1_chatml.json output.json \\
+        --tokenizer_path pretrained_1.5b_v2 \\
+        --num_gpus 8 \\
+        --path_remap "/mnt/weka/home/vikram.solanki/workspace/vs=/scratch/vikram.solanki/workspace/vs"
 """
 
 import json
@@ -58,6 +61,26 @@ V2_TOKENS = [
     "<|TARGET_CODES_START|>",
     "<|TARGET_CODES_END|>",
 ]
+
+
+def remap_path(path: str, path_remap: str) -> str:
+    """
+    Remap audio paths from old cluster to new cluster.
+    
+    Args:
+        path: Original audio path
+        path_remap: Remap string in format "old_prefix=new_prefix"
+    
+    Returns:
+        Remapped path
+    """
+    if not path_remap:
+        return path
+    
+    old_prefix, new_prefix = path_remap.split("=", 1)
+    if path.startswith(old_prefix):
+        return path.replace(old_prefix, new_prefix, 1)
+    return path
 
 
 def check_token_exists(tokenizer, token):
@@ -151,7 +174,7 @@ def _extract_chunk(chunk, start_idx):
     return results
 
 
-def gpu_worker(gpu_id, samples, result_queue, audio_path_prefix='', tokenizer_path='pretrained_1.5b_v2'):
+def gpu_worker(gpu_id, samples, result_queue, path_remap='', tokenizer_path='pretrained_1.5b_v2'):
     """GPU worker for encoding audio and tokenizing sequences with V2 template."""
     try:
         import os
@@ -169,6 +192,8 @@ def gpu_worker(gpu_id, samples, result_queue, audio_path_prefix='', tokenizer_pa
         torch.cuda.set_device(gpu_id)
         
         print(f"[GPU {gpu_id}] Initializing (H100: 90 I/O threads + V2 template)...", flush=True)
+        if path_remap:
+            print(f"[GPU {gpu_id}] Path remap: {path_remap}", flush=True)
         
         # Load NeuCodec
         try:
@@ -234,12 +259,13 @@ def gpu_worker(gpu_id, samples, result_queue, audio_path_prefix='', tokenizer_pa
             return waveform.squeeze()
         
         def load_and_prepare_batch(batch_items):
-            """Load multiple audio files in parallel."""
+            """Load multiple audio files in parallel with path remapping."""
             loaded_data = []
             for idx, ref_audio_path, ref_text, target_audio_path, target_text, sample_id in batch_items:
                 try:
-                    full_ref = audio_path_prefix + ref_audio_path if audio_path_prefix else ref_audio_path
-                    full_target = audio_path_prefix + target_audio_path if audio_path_prefix else target_audio_path
+                    # Apply path remapping (old cluster -> new cluster)
+                    full_ref = remap_path(ref_audio_path, path_remap)
+                    full_target = remap_path(target_audio_path, path_remap)
                     
                     ref_wave = load_audio_fast(full_ref)
                     target_wave = load_audio_fast(full_target)
@@ -453,7 +479,8 @@ def main():
                         help='Path to EXTENDED 1.5B tokenizer (with V2 tokens)')
     parser.add_argument('--num_gpus', type=int, default=8)
     parser.add_argument('--resume', action='store_true')
-    parser.add_argument('--audio_path_prefix', type=str, default='')
+    parser.add_argument('--path_remap', type=str, default='',
+                        help='Remap paths: "old_prefix=new_prefix" (e.g., "/mnt/weka/home=/scratch")')
     
     args = parser.parse_args()
     
@@ -463,11 +490,12 @@ def main():
     print("V2 Template Format:")
     print("  user: Convert the text to speech:<|REF_TEXT_START|>...assistant:<|TARGET_CODES_START|>...")
     print("  Labels: Train ONLY on target_codes + TARGET_CODES_END")
+    print("  Text: Direct text (NO phonemization)")
     print("=" * 80)
     print(f"Tokenizer: {args.tokenizer_path}")
     print(f"GPUs: {args.num_gpus} x H100 (TF32)")
-    if args.audio_path_prefix:
-        print(f"Audio prefix: {args.audio_path_prefix}")
+    if args.path_remap:
+        print(f"Path remap: {args.path_remap}")
     print("=" * 80)
     
     if not torch.cuda.is_available():
@@ -560,7 +588,7 @@ def main():
     for gpu_id in range(args.num_gpus):
         p = mp.Process(target=gpu_worker, args=(
             gpu_id, gpu_samples[gpu_id], result_queue, 
-            args.audio_path_prefix, args.tokenizer_path
+            args.path_remap, args.tokenizer_path
         ))
         p.start()
         processes.append(p)
