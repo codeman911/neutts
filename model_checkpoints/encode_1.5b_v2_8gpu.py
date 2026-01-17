@@ -195,10 +195,11 @@ def gpu_worker(gpu_id, samples, result_queue, path_remap='', tokenizer_path='pre
         if path_remap:
             print(f"[GPU {gpu_id}] Path remap: {path_remap}", flush=True)
         
-        # Load NeuCodec from local checkpoint
+        # Load NeuCodec (from HuggingFace or local)
         try:
             from neucodec import NeuCodec
-            codec = NeuCodec.from_pretrained(codec_path, local_files_only=True)
+            print(f"[GPU {gpu_id}] Loading NeuCodec from: {codec_path}", flush=True)
+            codec = NeuCodec.from_pretrained(codec_path)
             codec = codec.eval().to(device)
             
             torch.backends.cuda.matmul.allow_tf32 = True
@@ -206,7 +207,9 @@ def gpu_worker(gpu_id, samples, result_queue, path_remap='', tokenizer_path='pre
             
             print(f"[GPU {gpu_id}] NeuCodec loaded (TF32 enabled)", flush=True)
         except Exception as e:
-            print(f"[GPU {gpu_id}] NeuCodec failed: {e}", flush=True)
+            import traceback
+            print(f"[GPU {gpu_id}] NeuCodec failed: {type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
             for idx, _, _, _, _, _ in samples:
                 result_queue.put({'index': idx, 'success': False})
             return
@@ -477,8 +480,8 @@ def main():
     parser.add_argument('output_file', type=str)
     parser.add_argument('--tokenizer_path', type=str, default='pretrained_1.5b_v2',
                         help='Path to EXTENDED 1.5B tokenizer (with V2 tokens)')
-    parser.add_argument('--codec_path', type=str, default='neucodec_Checkpoints',
-                        help='Path to local NeuCodec checkpoint')
+    parser.add_argument('--codec_path', type=str, default='neuphonic/neucodec',
+                        help='NeuCodec model (HuggingFace ID or local path)')
     parser.add_argument('--num_gpus', type=int, default=8)
     parser.add_argument('--resume', action='store_true')
     parser.add_argument('--path_remap', type=str, default='',
