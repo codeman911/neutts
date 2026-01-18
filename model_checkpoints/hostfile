@@ -1,0 +1,8 @@
+# DeepSpeed hostfile for 4 nodes x 8 H100 GPUs
+# Format: hostname slots=<num_gpus>
+# Edit hostnames to match your cluster
+
+dgx-41 slots=8
+dgx-42 slots=8
+dgx-43 slots=8
+dgx-44 slots=8
