@@ -1,0 +1,78 @@
+# 1.5B NeuTTS V2 Finetuning Config - HuggingFace Dataset Format
+# ==============================================================
+#
+# Use with finetune_1.5b_hf.py for training on .arrow datasets
+#
+# Usage:
+#   # Local .arrow dataset
+#   python3 finetune_1.5b_hf.py config_1.5b_hf.yaml
+#
+#   # HuggingFace Hub dataset
+#   python3 finetune_1.5b_hf.py config_1.5b_hf.yaml --dataset-name "username/neutts-v2"
+#
+#   # Multi-GPU
+#   torchrun --nproc_per_node=8 finetune_1.5b_hf.py config_1.5b_hf.yaml
+
+# =============================================================================
+# MODEL & TOKENIZER
+# =============================================================================
+model_path: "pretrained_1.5b_v2"
+tokenizer_path: "pretrained_1.5b_v2"
+
+# =============================================================================
+# DATA - Local .arrow or HuggingFace Hub
+# =============================================================================
+# Option 1: Local .arrow dataset (created by hf_dataset.py)
+data_path: "./hf_dataset"
+
+# Option 2: HuggingFace Hub dataset (overrides data_path)
+# dataset_name: "username/neutts-v2-encoded"
+
+max_seq_len: 8192
+max_samples: null                          # null = all, or integer for debugging
+
+# =============================================================================
+# OUTPUT
+# =============================================================================
+save_root: "./outputs"
+run_name: "neutts-1.5b-v2-hf"
+
+# =============================================================================
+# TRAINING
+# =============================================================================
+lr: 2e-5
+lr_scheduler_type: "cosine"
+warmup_ratio: 0.03
+weight_decay: 0.01
+max_grad_norm: 1.0
+
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 4
+
+num_epochs: 3
+max_steps: -1
+
+# =============================================================================
+# CHECKPOINTING
+# =============================================================================
+save_steps: 500
+save_total_limit: 5
+resume_from_checkpoint: null
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+logging_steps: 10
+report_to: "none"
+
+# =============================================================================
+# PERFORMANCE
+# =============================================================================
+use_flash_attn: true
+torch_compile: false
+num_workers: 8
+
+# =============================================================================
+# MISC
+# =============================================================================
+seed: 42
